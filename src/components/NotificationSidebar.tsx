@@ -1,57 +1,39 @@
 import React from 'react';
-import { X, AlertTriangle, MapPin, TrendingUp, Flame } from 'lucide-react';
+import { X, AlertTriangle, MapPin, TrendingUp, Flame, Ship } from 'lucide-react';
+import type { Alert } from '../data/alertsData';
+import { alertsData } from '../data/alertsData';
 
-interface Alert {
-  id: string;
-  title: string;
-  location: string;
-  section: string;
-  insights: string[];
-  icon: React.ReactNode;
-  severity: 'high' | 'medium' | 'low';
-  timestamp: string;
-}
+// Icon mapping function
+const getIconComponent = (iconName: string) => {
+  switch (iconName) {
+    case 'AlertTriangle':
+      return <AlertTriangle className="w-5 h-5 text-red-600" />;
+    case 'TrendingUp':
+      return <TrendingUp className="w-5 h-5 text-blue-600" />;
+    case 'Flame':
+      return <Flame className="w-5 h-5 text-orange-600" />;
+    case 'Ship':
+      return <Ship className="w-5 h-5 text-purple-600" />;
+    default:
+      return <AlertTriangle className="w-5 h-5 text-gray-600" />;
+  }
+};
 
-const NotificationSidebar: React.FC<{
+interface NotificationSidebarProps {
   isOpen: boolean;
   onClose: () => void;
-}> = ({ isOpen, onClose }) => {
-  // Sample alert data based on the requirements
-  const alerts: Alert[] = [
-    {
-      id: '1',
-      title: 'New vehicles detected',
-      location: 'North African Military basecamp',
-      section: 'Deep Insights',
-      insights: ['30% increase in vehicles over 1 month'],
-      icon: <TrendingUp className="w-5 h-5 text-blue-600" />,
-      severity: 'medium',
-      timestamp: '2 hours ago'
-    },
-    {
-      id: '2',
-      title: 'Smoke detected',
-      location: 'Industrial Zone',
-      section: 'Deep Insights',
-      insights: ['Spike in CO2 detector logs'],
-      icon: <Flame className="w-5 h-5 text-orange-600" />,
-      severity: 'high',
-      timestamp: '1 hour ago'
-    },
-    {
-      id: '3',
-      title: 'Tents Detected',
-      location: 'Eastern border',
-      section: 'Deep Insights',
-      insights: [
-        '5 new vehicles crossing near border',
-        '20 phone numbers active within 48 hours near border'
-      ],
-      icon: <AlertTriangle className="w-5 h-5 text-red-600" />,
-      severity: 'high',
-      timestamp: '30 minutes ago'
+  onAlertClick?: (alert: Alert) => void; // New prop for handling alert clicks
+  alerts?: Alert[]; // Optional prop to pass custom alerts
+}
+
+const NotificationSidebar: React.FC<NotificationSidebarProps> = ({ isOpen, onClose, onAlertClick, alerts = alertsData }) => {
+
+  // Handle alert click
+  const handleAlertClick = (alert: Alert) => {
+    if (onAlertClick) {
+      onAlertClick(alert);
     }
-  ];
+  };
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -109,14 +91,24 @@ const NotificationSidebar: React.FC<{
           {alerts.map((alert) => (
             <div
               key={alert.id}
-              className={`border rounded-lg p-4 hover:shadow-md transition-shadow duration-200 ${getSeverityColor(
+              className={`border rounded-lg p-4 hover:shadow-md transition-all duration-200 cursor-pointer hover:scale-[1.02] ${getSeverityColor(
                 alert.severity
               )}`}
+              onClick={() => handleAlertClick(alert)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleAlertClick(alert);
+                }
+              }}
+              aria-label={`Alert: ${alert.title} at ${alert.location}`}
             >
               {/* Alert Header */}
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center space-x-2">
-                  {alert.icon}
+                  {getIconComponent(alert.icon)}
                   <h3 className="font-semibold text-gray-800">{alert.title}</h3>
                 </div>
                 <span className={`text-xs font-medium px-2 py-1 rounded-full ${getSeverityBadgeColor(alert.severity)}`}>

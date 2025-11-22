@@ -9,6 +9,8 @@ import ContextMenu from './ContextMenu';
 import SidebarComponent from './SidebarComponent';
 import NotificationButton from './NotificationButton';
 import NotificationSidebar from './NotificationSidebar';
+import type { Alert } from '../data/alertsData';
+import { alertsData } from '../data/alertsData';
 import * as GeoJSON from 'geojson';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -66,6 +68,20 @@ const MapComponent: React.FC = () => {
     }
   }, []);
 
+  // Handle suggestion selection
+  const handleSuggestionSelect = useCallback((suggestion: { coordinates: [number, number]; zoom: number }) => {
+    console.log('Selected suggestion:', suggestion);
+
+    if (map.current) {
+      // Fly to the coordinates from the suggestion
+      map.current.flyTo({
+        center: [suggestion.coordinates[1], suggestion.coordinates[0]], // Note: MapLibre uses [lng, lat] format
+        zoom: suggestion.zoom,
+        essential: true
+      });
+    }
+  }, []);
+
   // Handle context menu actions
   const handleStartWatch = useCallback((feature: GeoJSON.Feature) => {
     console.log('Starting watch for feature:', feature);
@@ -84,6 +100,215 @@ const MapComponent: React.FC = () => {
     console.log('Notification button clicked');
     openNotificationSidebar();
   }, [openNotificationSidebar]);
+
+  // Function to calculate optimal popup position based on feature geometry
+  const getPopupPositionForFeature = useCallback((
+    feature: GeoJSON.Feature,
+    fallbackCoordinates: [number, number]
+  ): [number, number] => {
+    if (!feature.geometry) return fallbackCoordinates;
+
+    const { type } = feature.geometry;
+
+    switch (type) {
+      case 'Point': {
+        return (feature.geometry as GeoJSON.Point).coordinates as [number, number];
+      }
+      
+      case 'Polygon': {
+        // Calculate the centroid of the polygon
+        const polygonCoords = (feature.geometry as GeoJSON.Polygon).coordinates;
+        const exteriorRing = polygonCoords[0]; // Use the exterior ring
+        
+        // Calculate centroid using the polygon vertices
+        let centroidLng = 0;
+        let centroidLat = 0;
+        let validPoints = 0;
+        
+        exteriorRing.forEach(coord => {
+          if (coord.length >= 2 && !isNaN(coord[0]) && !isNaN(coord[1])) {
+            centroidLng += coord[0];
+            centroidLat += coord[1];
+            validPoints++;
+          }
+        });
+        
+        if (validPoints > 0) {
+          return [centroidLng / validPoints, centroidLat / validPoints];
+        }
+        
+        // Fallback to bounds calculation
+        const bounds = new maplibregl.LngLatBounds();
+        exteriorRing.forEach(coord => {
+          if (coord.length >= 2) {
+            bounds.extend([coord[0], coord[1]]);
+          }
+        });
+        
+        return bounds.getCenter().toArray();
+      }
+      
+      case 'LineString': {
+        // For lines, find the midpoint
+        const lineCoords = (feature.geometry as GeoJSON.LineString).coordinates;
+        if (lineCoords.length >= 2) {
+          const midIndex = Math.floor(lineCoords.length / 2);
+          return lineCoords[midIndex].slice(0, 2) as [number, number];
+        }
+        return fallbackCoordinates;
+      }
+      
+      case 'MultiPoint': {
+        // For multiple points, use the first point or calculate centroid
+        const multiPointCoords = (feature.geometry as GeoJSON.MultiPoint).coordinates;
+        if (multiPointCoords.length > 0) {
+          return multiPointCoords[0].slice(0, 2) as [number, number];
+        }
+        return fallbackCoordinates;
+      }
+      
+      default:
+        return fallbackCoordinates;
+    }
+  }, []);
+
+  // Function to clean up all alert features and popups
+  const cleanupAlertFeatures = useCallback(() => {
+    if (map.current) {
+      // Remove alert layers
+      if (map.current.getLayer('alert-features-layer')) {
+        map.current.removeLayer('alert-features-layer');
+      }
+      if (map.current.getLayer('alert-features-outline')) {
+        map.current.removeLayer('alert-features-outline');
+      }
+      
+      // Remove alert source
+      if (map.current.getSource('alert-features-source')) {
+        map.current.removeSource('alert-features-source');
+      }
+      
+      // Close all popups
+      const popups = document.querySelectorAll('.maplibregl-popup');
+      popups.forEach(popup => popup.remove());
+    }
+  }, []);
+
+  // Handle alert click - navigate to alert location on map and draw features
+  const handleAlertClick = useCallback((alert: Alert) => {
+    console.log('Alert clicked:', alert);
+
+    if (map.current) {
+      // Remove any existing alert features and popups first
+      cleanupAlertFeatures();
+
+      // Set zoom to 16 for all alerts as requested
+      const { center, pitch = 0, bearing = 0 } = alert.mapPosition;
+      
+      // Fly to the alert position with zoom 16
+      map.current.flyTo({
+        center,
+        zoom: 16,
+        pitch,
+        bearing,
+        essential: true
+      });
+
+      // Draw the alert feature on the map with new styling
+      if (alert.feature.geometry) {
+        // Add source for the alert feature
+        map.current.addSource(`alert-features-source`, {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            geometry: alert.feature.geometry,
+            properties: alert.feature.properties || {}
+          }
+        });
+
+        // Apply new styling: stroke 2, no fill, red alert color
+        const { type } = alert.feature;
+        const alertRedColor = '#ef4444'; // Red alert color
+        
+        switch (type) {
+          case 'polygon':
+            // No fill, just outline
+            map.current.addLayer({
+              id: 'alert-features-outline',
+              type: 'line',
+              source: 'alert-features-source',
+              paint: {
+                'line-color': alertRedColor,
+                'line-width': 2
+              }
+            });
+            break;
+            
+          case 'line':
+            map.current.addLayer({
+              id: 'alert-features-layer',
+              type: 'line',
+              source: 'alert-features-source',
+              paint: {
+                'line-color': alertRedColor,
+                'line-width': 2
+              }
+            });
+            break;
+            
+          case 'point':
+          case 'circle':
+            map.current.addLayer({
+              id: 'alert-features-layer',
+              type: 'circle',
+              source: 'alert-features-source',
+              paint: {
+                'circle-radius': 8,
+                'circle-color': 'transparent', // No fill
+                'circle-stroke-color': alertRedColor,
+                'circle-stroke-width': 2,
+                'circle-opacity': 0
+              }
+            });
+            break;
+        }
+
+        // Add popup with alert information
+        if (alert.feature.properties?.name) {
+          // Create a proper GeoJSON Feature from the alert feature data
+          const geoFeature: GeoJSON.Feature = {
+            type: 'Feature',
+            geometry: alert.feature.geometry,
+            properties: alert.feature.properties || {}
+          };
+
+          // Calculate optimal popup position based on feature geometry
+          const popupPosition = getPopupPositionForFeature(
+            geoFeature,
+            alert.coordinates
+          );
+
+          const popup = new maplibregl.Popup({
+            closeButton: true,
+            closeOnClick: false,
+            offset: [0, -10] // Offset to position popup above the feature
+          }).setHTML(`
+            <div class="p-2">
+              <h3 class="font-semibold text-sm">${alert.title}</h3>
+              <p class="text-xs text-gray-600 mt-1">${alert.feature.properties.name}</p>
+              ${alert.feature.properties.vehicleCount ? `<p class="text-xs text-gray-500">Vehicles: ${alert.feature.properties.vehicleCount}</p>` : ''}
+              ${alert.feature.properties.intensity ? `<p class="text-xs text-gray-500">Intensity: ${alert.feature.properties.intensity}</p>` : ''}
+            </div>
+          `);
+          
+          // Show popup at the calculated optimal position
+          popup.setLngLat(popupPosition).addTo(map.current);
+        }
+      }
+
+      // Keep the notification sidebar open for continued interaction
+    }
+  }, [cleanupAlertFeatures, getPopupPositionForFeature]);
 
   // Handle right-click on drawn features
   const handleContextMenu = useCallback((event: maplibregl.MapMouseEvent) => {
@@ -127,7 +352,7 @@ const MapComponent: React.FC = () => {
     map.current = new maplibregl.Map({
       container: mapContainer.current,
       style: `https://api.maptiler.com/maps/satellite/style.json?key=${MAPTILER_API_KEY}`,
-      center: [-74.0060, 40.7128], // New York coordinates
+      center: [54.4156268, 24.4525537], // Default coordinates: 24.4525537, 54.4156268
       zoom: 12,
       pitch: 0,
       bearing: 0,
@@ -264,6 +489,7 @@ const MapComponent: React.FC = () => {
     map.current.on('draw.create', (e: { features: GeoJSON.Feature[] }) => {
       const { addDrawnFeature } = useMapStore.getState();
       const feature = e.features[0];
+      console.log('Drawn shape GeoJSON:', feature);
       addDrawnFeature(feature);
     });
 
@@ -291,13 +517,18 @@ const MapComponent: React.FC = () => {
     };
   }, []); // Remove dependencies to prevent re-initialization
 
+  // Enhanced closeNotificationSidebar to also clean up alert features
+  const handleCloseNotificationSidebar = useCallback(() => {
+    cleanupAlertFeatures();
+    closeNotificationSidebar();
+  }, [cleanupAlertFeatures, closeNotificationSidebar]);
 
   return (
     <div className="w-full h-screen">
       <div ref={mapContainer} className="absolute inset-0 w-full h-screen" />
 
       {/* Search Component */}
-      <SearchComponent onSearch={handleSearch} />
+      <SearchComponent onSearch={handleSearch} onSuggestionSelect={handleSuggestionSelect} />
 
       {/* Drawing Controls */}
       <DrawingControls draw={draw} map={map} />
@@ -319,15 +550,16 @@ const MapComponent: React.FC = () => {
       />
 
       {/* Notification Button */}
-      <NotificationButton 
-        notificationCount={3} 
-        onClick={handleNotificationClick} 
+      <NotificationButton
+        notificationCount={alertsData.length}
+        onClick={handleNotificationClick}
       />
 
       {/* Notification Sidebar */}
-      <NotificationSidebar 
-        isOpen={notificationSidebar.isOpen} 
-        onClose={closeNotificationSidebar} 
+      <NotificationSidebar
+        isOpen={notificationSidebar.isOpen}
+        onClose={handleCloseNotificationSidebar}
+        onAlertClick={handleAlertClick}
       />
 
       {/* API Key Notice */}

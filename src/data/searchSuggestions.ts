@@ -1,0 +1,23 @@
+export interface SearchSuggestion {
+  text: string;
+  coordinates: [number, number];
+  zoom: number;
+}
+
+export const searchSuggestions: SearchSuggestion[] = [
+  {
+    text: 'naval airbase',
+    coordinates: [27.0405505, 49.4002191],
+    zoom: 16
+  },
+  {
+    text: 'uae saudi border',
+    coordinates: [23.04588187396214, 2.49395029625795],
+    zoom: 16
+  },
+  {
+    text: 'barari reserved forest',
+    coordinates: [24.181269031333503, 55.316612230452535],
+    zoom: 16
+  }
+];

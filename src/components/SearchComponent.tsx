@@ -1,31 +1,28 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
+import type { SearchSuggestion } from '../data/searchSuggestions';
+import { searchSuggestions } from '../data/searchSuggestions';
 
 interface SearchComponentProps {
   onSearch?: (query: string) => void;
+  onSuggestionSelect?: (suggestion: SearchSuggestion) => void;
 }
 
-const SearchComponent: React.FC<SearchComponentProps> = ({ onSearch }) => {
+const SearchComponent: React.FC<SearchComponentProps> = ({ onSearch, onSuggestionSelect }) => {
   const [query, setQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestions = searchSuggestions; // Direct use instead of state
   const searchRef = useRef<HTMLDivElement>(null);
-
-  // Predefined search suggestions
-  const predefinedSuggestions = [
-    'israel military bases',
-    'uae saudi border',
-    'abudhabi mangrove forest'
-  ];
 
   // Filter suggestions based on query using useMemo
   const filteredSuggestions = useMemo(() => {
     if (query.length > 0) {
-      return predefinedSuggestions.filter(suggestion =>
-        suggestion.toLowerCase().includes(query.toLowerCase())
+      return suggestions.filter(suggestion =>
+        suggestion.text.toLowerCase().includes(query.toLowerCase())
       );
     }
     // When no query, show all suggestions
-    return predefinedSuggestions;
-  }, [query]);
+    return suggestions;
+  }, [query, suggestions]);
 
   useEffect(() => {
     // Handle clicks outside the search component
@@ -46,11 +43,13 @@ const SearchComponent: React.FC<SearchComponentProps> = ({ onSearch }) => {
     setShowSuggestions(true);
   };
 
-  const handleSuggestionClick = (suggestion: string) => {
-    setQuery(suggestion);
+  const handleSuggestionClick = (suggestion: SearchSuggestion) => {
+    setQuery(suggestion.text);
     setShowSuggestions(false);
-    if (onSearch) {
-      onSearch(suggestion);
+    if (onSuggestionSelect) {
+      onSuggestionSelect(suggestion);
+    } else if (onSearch) {
+      onSearch(suggestion.text);
     }
   };
 
@@ -129,7 +128,7 @@ const SearchComponent: React.FC<SearchComponentProps> = ({ onSearch }) => {
                           d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
                         />
                       </svg>
-                      <span>{suggestion}</span>
+                      <span>{suggestion.text}</span>
                     </div>
                   </button>
                 </li>
