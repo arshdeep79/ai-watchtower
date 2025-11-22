@@ -365,13 +365,16 @@ const MapComponent: React.FC = () => {
     map.current.addControl(new maplibregl.ScaleControl(), 'bottom-left');
 
     // Initialize drawing tools with MapLibre-compatible styles
+    // HIDE DEFAULT CONTROLS by setting displayControlsDefault to false and all controls to false
     draw.current = new MapboxDraw({
       displayControlsDefault: false,
       controls: {
-        point: true,
-        line_string: true,
-        polygon: true,
-        trash: true,
+        point: false,
+        line_string: false,
+        polygon: false,
+        trash: false,
+        combine_features: false,
+        uncombine_features: false
       },
       defaultMode: 'simple_select',
       styles: [
