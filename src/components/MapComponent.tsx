@@ -490,11 +490,14 @@ const MapComponent: React.FC = () => {
 
     // Handle drawing events
     map.current.on('draw.create', (e: { features: GeoJSON.Feature[] }) => {
-      const { addDrawnFeature } = useMapStore.getState();
+      const { addDrawnFeature, setIsDrawing } = useMapStore.getState();
       const feature = e.features[0];
       console.log('Drawn shape GeoJSON:', feature);
       addDrawnFeature(feature);
+      // When drawing is completed, update the drawing state to false
+      setIsDrawing(false);
     });
+
 
     map.current.on('draw.delete', () => {
       // Update state when features are deleted
@@ -508,6 +511,15 @@ const MapComponent: React.FC = () => {
       clearDrawnFeatures();
       e.features.forEach((feature: GeoJSON.Feature) => addDrawnFeature(feature));
     });
+
+    // Handle drawing mode changes to sync with our state
+    map.current.on('draw.modechange', (e: { mode: string }) => {
+      const { setIsDrawing } = useMapStore.getState();
+      console.log('Drawing mode changed to:', e.mode);
+      // Update our state based on the current drawing mode
+      setIsDrawing(e.mode === 'draw_polygon');
+    });
+
 
     // Handle context menu on drawn features
     map.current.on('contextmenu', handleContextMenu);
